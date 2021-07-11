@@ -20,20 +20,26 @@ class card:
 			return False
 		return True
 class cardstack:
-	stack=[]
 	def __init__(self):
+		self.stack=[]
 		for suit in range(1,5):
 			for num in range(2,15):
 				self.stack.append(card(suit,num))
 		seed=random.randrange(sys.maxsize)
-		print("Seed was:", seed)
-		random.seed()
+		#seed=8231808227551715840
+		#print("Seed was:", seed)
+		random.seed(seed)
+		self.stack.sort(key=lambda x:random.random())
 	def get1(self):
 		if len(self)==0:
 			print('Error!!! No card to do get1')
-			return
+			return None
 		i=random.randrange(0,len(self.stack))
 		return self.stack.pop(i)
+	def get13(self):
+		a=self.stack[:13]
+		del self.stack[:13];
+		return a
 	def __len__(self):
 		return len(self.stack)
 cardsetout={0:'單張',1:'胚',2:'吐胚',3:'三條',4:'順',5:'同花',6:'葫蘆',7:'鐵支',8:'同花順'}
@@ -161,21 +167,3 @@ class cardset:
 		if self.ctype!=None:
 			ans+='是'+cardsetout[self.ctype]+'\n'
 		return ans
-if __name__ == '__main__':
-	nums=[8,8,9,9,7]
-	suits=[4,1,2,3,4]
-	cards=[]
-	for i in range(5):
-		cards.append(card(suits[i],nums[i]))
-	a=cardset(cards)
-	
-	nums=[8,8,9,9,6]
-	suits=[4,1,2,3,4]
-	cards=[]
-	for i in range(5):
-		cards.append(card(suits[i],nums[i]))
-	b=cardset(cards)
-	print(a)
-	print(b)
-	
-	print(a<b)
