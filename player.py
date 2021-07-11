@@ -95,6 +95,7 @@ if __name__ == '__main__':
 	t=0
 	straight=0
 	samesuit=0
+	hulu=0
 	start=time()
 	for _ in range(100000):
 		s=cardstack()
@@ -109,6 +110,8 @@ if __name__ == '__main__':
 			if p1.samesuit[i]>=5:
 				samesuit+=1
 		f+=sum(p1.four)
+		hulu+=min(sum(p1.p),sum(p1.t))
+	print(ss,f,straight,samesuit,p,t,hulu)
 	print(time()-start)
 '''
 輸入：
@@ -132,5 +135,4 @@ if __name__ == '__main__':
 發牌給四個人，每個人產生一些(100)排法，對於每個人的每一種牌，隨機抽取一些(100)對手來比較，並取用其中的方法來作為資料，越好的組合權重越高。打人機率和被打機率照真實數據算。
 
 可以考慮每次針對一個人，其他三人的牌可能可以重新發牌多次，可能能處理的牌型會比較多元，感覺這個方法比較可行。
-
 '''
