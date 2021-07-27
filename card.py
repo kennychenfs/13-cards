@@ -5,22 +5,27 @@ numout={11:'J',12:'Q',13:'K',14:'A'}
 class card:
 	suit=1
 	num=2
-	def __init__(self,suit=1,num=2):#14 means A
-		self.suit=suit
-		self.num=num
+	def __init__(self,suit=1,num=2,index=None):#14 means A #5*10^6 times a sec
+		if index==None:
+			self.suit=suit
+			self.num=num
+		else:
+			self.suit=index//13+1
+			self.num=index%13+2
+	def toindex(self):
+		return self.suit*13+self.num-15#(self.suit-1)*13+self.num-2
 	def __eq__(self,other):
-		if self.suit==other.suit and self.num==other.num:return True
-		return False
+		return self.suit==other.suit and self.num==other.num#6*10^6 times a sec
 	def __str__(self):
 		return suitout[self.suit]+numout.get(self.num,str(self.num))
-	def valid(self):
+	def valid(self):#2*10^6 times a sec
 		if self.suit not in range(1,5):
 			return False
 		if self.num not in range(2,15):
 			return False
 		return True
 class cardstack:
-	def __init__(self):
+	def __init__(self):#4*10^4 times a sec
 		self.stack=[]
 		for suit in range(1,5):
 			for num in range(2,15):
@@ -30,13 +35,15 @@ class cardstack:
 		#print("Seed was:", seed)
 		random.seed(seed)
 		self.stack.sort(key=lambda x:random.random())
-	def get1(self):
+	def shuffle(self):
+		self.stack.sort(key=lambda x:random.random())
+	def get1(self):#1.3*10^6 times a sec
 		if len(self)==0:
 			print('Error!!! No card to do get1')
 			return None
 		i=random.randrange(0,len(self.stack))
 		return self.stack.pop(i)
-	def get13(self):
+	def get13(self):#pretty fast, maybe 4*10^6 times a sec
 		a=self.stack[:13]
 		del self.stack[:13];
 		return a
@@ -51,6 +58,9 @@ class cardset:
 		self.ctype=None
 		self.hash=None#一律把2~A變成0~12再做
 		self.determined=False
+	def clear(self):
+		del self.cards
+		self.cards=[]
 	def determine(self):
 		self.cards.sort(key=lambda x:x.num*4+x.suit)
 		if len(self)!=3 and len(self)!=5:
@@ -148,6 +158,7 @@ class cardset:
 				if i>=j:continue
 				if self.cards[i]==self.cards[j]:
 					print('ERRER!!! Some cards in cards are the same')
+					print(self)
 					v=False
 		return v
 	def __lt__(self,other):
@@ -163,7 +174,17 @@ class cardset:
 		self.determine()
 		ans='有'+str(len(self))+'張牌\n'
 		for i in self.cards:
-			ans+=i.__str__()+'\n'
+			ans+=str(i)+'\n'
 		if self.ctype!=None:
 			ans+='是'+cardsetout[self.ctype]+'\n'
 		return ans
+from time import time
+if __name__ == '__main__':
+	a=cardstack()
+	print(dir(a))
+	'''
+	for _ in range(int(4e4)):
+		a=cardstack()
+		for i in range(4):
+			a.get13()
+	print(time()-start)'''
