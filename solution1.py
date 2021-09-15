@@ -160,21 +160,22 @@ def generator_loss(output):
 
 t_stats=[0]*5
 optimizer=optimizers.Adam(1e-2)
-def train_step(model,xdata,ydata):
+def train_step(pmodel,dmodel,xdata,ydata):
 	with tf.GradientTape() as tape:
-		outputs=model(xdata,training=True)#[three (52) shaped policy, two (1) shaped value]
+		outputs=pmodel(xdata,training=True)#[three (52) shaped policy, two (1) shaped value]
 		crossentropy=losses.CategoricalCrossentropy(from_logits=True)
 		
 		floss=crossentropy(ydata[0],outputs[0])
 		mloss=crossentropy(ydata[1],outputs[1])
 		bloss=crossentropy(ydata[2],outputs[2])
-		
 		hitloss=crossentropy(ydata[3],outputs[3])
 		behitloss=crossentropy(ydata[4],outputs[4])
 		
-		vloss=valid_loss(xdata[0],outputs)
-		loss=floss+mloss+bloss+hitloss+behitloss+vloss
-	print(vloss)
+		valid,invalid=judge(ydata)
+		discriminate_outputs=dmodel([ydata[0],ydata[1],ydata[2]],training=True)
+		
+		
+		loss=floss+mloss+bloss+hitloss+behitloss
 	gradients=tape.gradient(loss,model.trainable_variables)
 
 	optimizer.apply_gradients(zip(gradients,model.trainable_variables))
