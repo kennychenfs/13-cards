@@ -7,9 +7,9 @@ from player import *
 from time import time,sleep
 BATCH_SIZE=20
 noise_dim=5
-
+LEARNING_RATE=1e-3
 SAMPLES=3
-def getmodel(_type=0):
+def playermodel(_type=0):
 	if _type==0:
 		rawinput=keras.Input(shape=(52),name='raw')
 	elif _type==1:
@@ -85,28 +85,35 @@ def getmodel(_type=0):
 		inputs=[rawinput,p_input,t_input,str_input,suit_input,four_input,ss_input,noise_input],
 		outputs=[policy_head_front,policy_head_mid,policy_head_back,hit_head,behit_head]
 	)
-def load_numpy(f):
-	indata=[]
-	outdata=[]
-	with open(f,'rb') as F:
-		for i in range(7):
-			indata.append(np.load(F).astype('float32'))
-			#print(indata[-1][3125])
-		for i in range(3):
-			outdata.append(np.load(F).astype('float32'))
-	print(outdata[0].shape)
-	outdata[0]=np.transpose(outdata[0],axes=(1,0,2))
-	print(outdata[0].shape)
-	outdata[0][0]/=3.
-	outdata[0][1]/=5.
-	outdata[0][2]/=5.
-	return indata,(outdata[0][0],outdata[0][1],outdata[0][2],outdata[1],outdata[2])
+def discriminatormodel():
+	#input is [policy_head_front,policy_head_mid,policy_head_back], all of which are in shape (52)
+	input_front=keras.Input(shape=(52),name='front')
+	input_mid=keras.Input(shape=(52),name='mid')
+	input_back=keras.Input(shape=(52),name='back')
+	x=layers.concatenate([input_front,input_mid,input_back]);
+	x=layers.Dense(128)(x)
+	x=layers.LeakyReLU()(x)
+	x=layers.Dropout(0.5)(x)
+	x=layers.Dense(128)(x)
+	x=layers.LeakyReLU()(x)
+	x=layers.Dropout(0.5)(x)
+	x=layers.Dense(128)(x)
+	x=layers.LeakyReLU()(x)
+	x=layers.Dropout(0.5)(x)
+	x=layers.Dense(16)(x)
+	x=layers.LeakyReLU()(x)
+	x=layers.Dropout(0.5)(x)
+	x=layers.Dense(1,activation='sigmoid')(x)
+	return Model(
+		inputs=[input_front,input_mid,input_back],
+		outputs=x
+	)
 def init_model(to_compile=False):
-	model=getmodel(0)
-	print(model.summary())
+	pmodel=playermodel(0)
+	print(pmodel.summary())
 	if to_compile:
-		model.compile(
-			optimizer=optimizers.Adam(1e-2),
+		pmodel.compile(
+			optimizer=optimizers.Adam(LEARNING_RATE),
 			loss=[
 				losses.CategoricalCrossentropy(from_logits=True),
 				losses.CategoricalCrossentropy(from_logits=True),
@@ -116,7 +123,9 @@ def init_model(to_compile=False):
 			],
 			loss_weights=[1.0,1.0,1.0,1.0,1.0],
 		)
-	return model
+	dmodel=discriminatormodel()
+	print(dmodel.summary())
+	return pmodel,dmodel
 def load_model(f):
 	return keras.models.load_model(f)
 def save_model(f,model):
@@ -140,76 +149,16 @@ def train(model,dataf,modelf):
 			save_model(modelf,model)
 		return model
 '''
+cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+def discriminator_loss(valid,invalid):
+    valid_loss=cross_entropy(tf.ones_like(valid),valid)
+	invalid_loss=cross_entropy(tf.zeros_like(invalid),invalid)
+	total_loss=valid_loss+invalid_loss
+    return total_loss
+def generator_loss(output):
+    return cross_entropy(tf.ones_like(output),output)
+
 t_stats=[0]*5
-#this doesn't work well
-def valid_loss(xdata,ypredict):
-	start=time()
-	def addifnotfull(cs,toadd,limit=5):#cs is self.front or self.mid or self.back
-		if len(cs)<limit:
-			cs.cards.append(toadd)
-			return True
-		return False
-	p=player()
-	ypredict=ypredict[:3]
-	for i in range(3):
-		ypredict[i]=tf.nn.softmax(ypredict[i],axis=-1).numpy()
-	#xdata:array, shape=(batch_size,52)
-	#ypredict:three arrays, shape=(batch_size,52)
-	batchsize=BATCH_SIZE
-	valid_rate=[0]*batchsize#np.zeros((batchsize),dtype='float32')
-	t_stats[0]+=time()-start
-	for num in range(batchsize):
-		start=time()
-		x=xdata[num]
-		'''
-		for i in range(4):
-			for j in range(13):
-				print(int(x[i*13+j]),end=' ')
-			print()'''
-		policyf,policym,policyb=[ypredict[i][num] for i in range(3)]
-		policyf=policyf.tolist()
-		policym=policym.tolist()
-		policyb=policyb.tolist()
-		po=policyf+policym+policyb
-		valid=0
-		t_stats[1]+=time()-start
-		start=time()
-		for _ in range(SAMPLES):
-			exist=[i==1 for i in x]
-			p=player()
-			policys=po[:]
-			#This way is slightly faster than np.concatenate
-			rest=13
-			while True:
-				if len(p.front)==3 and len(p.mid)==5 and len(p.back)==5:
-					break
-				a=random.choices(range(156),weights=policys,k=rest)
-				for ind in a:
-					i=ind//52
-					j=ind%52
-					if not exist[j]:
-						policys[j]=policys[j+52]=policys[j+104]=0
-						continue
-					suc=False#success
-					if i==0:
-						suc=addifnotfull(p.front,card(index=j),3)
-					if i==1:
-						suc=addifnotfull(p.mid,card(index=j))
-					if i==2:
-						suc=addifnotfull(p.back,card(index=j))
-					if suc:
-						exist[j]=False
-						rest-=1
-			if p.valid():
-				valid_rate[num]+=1
-		t_stats[2]+=time()-start
-		start=time()
-	#print(valid_rate)
-	valid_rate=tf.convert_to_tensor(valid_rate,dtype=tf.float32)
-	valid_rate/=SAMPLES
-	ans=sum(valid_rate)/batchsize
-	print(ans)
-	return (1-ans)*(1-ans)*100
 optimizer=optimizers.Adam(1e-2)
 def train_step(model,xdata,ydata):
 	with tf.GradientTape() as tape:
@@ -230,47 +179,5 @@ def train_step(model,xdata,ydata):
 
 	optimizer.apply_gradients(zip(gradients,model.trainable_variables))
 	return floss,mloss,bloss,hitloss,behitloss,vloss
-def train(model,dataf,modelf,epochs=5):
-	with tf.device('/device:GPU:0'):
-		xdata,ydata=load_numpy(dataf)
-		length=len(xdata[0])
-		print(length)
-		noise=np.random.random((length, noise_dim))
-		xdata.append(noise)
-		for i in xdata:
-			print(i.shape)
-		dataset = tf.data.Dataset.from_tensor_slices((*xdata, *ydata))
-		test_dataset = dataset.take(int(length*0.1))
-		train_dataset = dataset.take(100)
-		batched_dataset = train_dataset.shuffle(100).batch(BATCH_SIZE)
-		for epoch in range(epochs):
-			for data in batched_dataset:
-				
-				floss,mloss,bloss,hitloss,behitloss,vloss=train_step(model,data[:8],data[8:])
-				#print(t_stats)
-		vloss_sum=0
-		num=0
-		print('training ends')
-		for data in batched_dataset:
-			outputs=model(data[:8],training=True)#[three (52) shaped policy, two (1) shaped value]
-			vloss=valid_loss(data[0],outputs)
-			vloss_sum+=vloss
-			print(vloss)
-		print(vloss_sum/num)
 if __name__=='__main__':
-	model=init_model()
-	train(model,'test.npy','test.h5')
-	'''
-	TRAINING=1
-	if TRAINING:
-		model=init_model()
-		#sleep(1)
-		#train(model,'test.npy','test.h5')
-		
-	else:
-		model=load_model('test.h5')
-	'''
-	
-	
-	
-	
+	pmodel,dmodel=init_model()
