@@ -109,10 +109,11 @@ def discriminatormodel():
 		outputs=x
 	)
 def init_model(to_compile=False):
-	pmodel=playermodel(0)
-	print(pmodel.summary())
+	gen_model=playermodel(0)
+	#print(gen_model.summary())
+	'''
 	if to_compile:
-		pmodel.compile(
+		gen_model.compile(
 			optimizer=optimizers.Adam(LEARNING_RATE),
 			loss=[
 				losses.CategoricalCrossentropy(from_logits=True),
@@ -123,9 +124,10 @@ def init_model(to_compile=False):
 			],
 			loss_weights=[1.0,1.0,1.0,1.0,1.0],
 		)
-	dmodel=discriminatormodel()
-	print(dmodel.summary())
-	return pmodel,dmodel
+	'''
+	disc_model=discriminatormodel()
+	#print(disc_model.summary())
+	return gen_model,disc_model
 def load_model(f):
 	return keras.models.load_model(f)
 def save_model(f,model):
@@ -149,20 +151,22 @@ def train(model,dataf,modelf):
 			save_model(modelf,model)
 		return model
 '''
-cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
+binary_cross_entropy = tf.keras.losses.BinaryCrossentropy(from_logits=True)
 def discriminator_loss(valid,invalid):
-    valid_loss=cross_entropy(tf.ones_like(valid),valid)
-	invalid_loss=cross_entropy(tf.zeros_like(invalid),invalid)
+    valid_loss=binary_cross_entropy(tf.ones_like(valid),valid)
+	invalid_loss=binary_cross_entropy(tf.zeros_like(invalid),invalid)
 	total_loss=valid_loss+invalid_loss
     return total_loss
 def generator_loss(output):
-    return cross_entropy(tf.ones_like(output),output)
+    return binary_cross_entropy(tf.ones_like(output),output)
 
 t_stats=[0]*5
-optimizer=optimizers.Adam(1e-2)
-def train_step(pmodel,dmodel,xdata,ydata):
-	with tf.GradientTape() as tape:
-		outputs=pmodel(xdata,training=True)#[three (52) shaped policy, two (1) shaped value]
+gen_optimizer=optimizers.Adam(LEARNING_RATE)
+disc_optimizer=optimizers.Adam(LEARNING_RATE)
+@tf.function
+def train_step(gen_model,disc_model,xdata,ydata):
+    with tf.GradientTape() as gen_tape, tf.GradientTape() as disc_tape:
+		outputs=gen_model(xdata,training=True)#[three (52) shaped policy, two (1) shaped value]
 		crossentropy=losses.CategoricalCrossentropy(from_logits=True)
 		
 		floss=crossentropy(ydata[0],outputs[0])
@@ -171,14 +175,21 @@ def train_step(pmodel,dmodel,xdata,ydata):
 		hitloss=crossentropy(ydata[3],outputs[3])
 		behitloss=crossentropy(ydata[4],outputs[4])
 		
-		valid,invalid=judge(ydata)
-		discriminate_outputs=dmodel([ydata[0],ydata[1],ydata[2]],training=True)
+		#validp=judge(ydata) # 手動檢查無法微分，目前考慮直接把神經網路輸出的當作invalid，資料作為valid
+		data_valid=disc_model([ydata[0],ydata[1],ydata[2]],training=True)
+		gen_valid=disc_model([outputs[0],outputs[1],outputs[2]],training=True)
 		
-		
-		loss=floss+mloss+bloss+hitloss+behitloss
-	gradients=tape.gradient(loss,model.trainable_variables)
+		valid_loss=generator_loss(gen_valid)
+		disc_loss=discriminator_loss(data_valid,gen_valid)
 
-	optimizer.apply_gradients(zip(gradients,model.trainable_variables))
-	return floss,mloss,bloss,hitloss,behitloss,vloss
+		gen_loss=floss+mloss+bloss+hitloss+behitloss+valid_loss
+	gen_gradients=gen_tape.gradient(gen_loss,gen_model.trainable_variables)
+	disc_gradients=disc_tape.gradient(disc_loss,disc_model.trainable_variables)
+
+
+	gen_optimizer.apply_gradients(zip(gen_gradients,gen_model.trainable_variables))
+	disc_optimizer.apply_gradients(zip(disc_gradients,disc_model.trainable_variables))
+	return floss,mloss,bloss,hitloss,behitloss,valid_loss
+
 if __name__=='__main__':
-	pmodel,dmodel=init_model()
+	gen_model,disc_model=init_model()
